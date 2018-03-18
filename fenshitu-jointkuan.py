@@ -81,9 +81,7 @@ def check_time(start_time, end_time, cur_time):
 def before_market_open(context):
     # 输出运行时间
     log.info('函数运行时间(before_market_open)：'+str(context.current_dt.time()))
-    if g.status != -1:
-        log.info("ERROR:", g.status, str(context.current_dt.time()))
-    #assert(g.status == -1)
+    assert(g.status == -1)
     
     # 给微信发送消息（添加模拟交易，并绑定微信生效）
     if 1: # TODO - check the trading day
@@ -127,18 +125,25 @@ def handle_bar_min(context):
         return
     
     future = g.future
+    
     # 获取单个品种的数据结构为：pandas.DataFrame
     bars = get_price(future, start_date=g.open_time, 
 		                          end_date=context.current_dt, frequency='minute', fields=['close', 'volume', 'money'])
-
+    
     total_volume = bars.iloc[:, 1].sum()
     total_money = bars.iloc[:, 2].sum()
     
+    if len(bars) > 0:
+        cur_time = bars.index[-1]
+        
     # 连续三个k线没有交易量则调整开盘时间到日盘模式
     if len(bars) == 3 and total_volume == 0:
-        log.info(bars)
-        log.info("下一交易日没有夜盘！")
-        g.status = 0
+        if check_time("21:00", "22:00", cur_time):
+            log.info("下一交易日没有夜盘！")
+            g.status = 0
+        if check_time("9:00", "9:30", cur_time): #异常情况（如2018.1.2数据缺失） 
+            log.warning("交易数据缺失，放弃当日回测！")
+            g.status = -1
         return
     
     if total_volume > 0 and total_money > 0:# and total_volume < 150000:
@@ -155,7 +160,6 @@ def handle_bar_min(context):
         #log.info(cur_avg, cur_price)
         
         # 交易时间设定（比如尾盘只平不开，不考虑日期，只看时间区间）
-        cur_time = bars.index[-1]
         
         IsLast = check_time("14:55", "15:00", cur_time)
 
